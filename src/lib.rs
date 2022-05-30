@@ -32,7 +32,7 @@
 //!
 //! ``` toml
 //! [dependencies]
-//! rustc-llvm-proxy = "0.1"
+//! rustc-llvm-proxy = "0.4"
 //! ```
 //!
 //! ``` rust
@@ -67,12 +67,14 @@ lazy_static! {
             }
         };
 
-        match Library::new(lib_path) {
-            Ok(path) => path,
+        unsafe {
+            match Library::new(lib_path) {
+                Ok(path) => path,
 
-            Err(error) => {
-                eprintln!("Unable to open LLVM shared lib: {}", error);
-                panic!();
+                Err(error) => {
+                    eprintln!("Unable to open LLVM shared lib: {}", error);
+                    panic!();
+                }
             }
         }
     };
