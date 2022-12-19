@@ -14,7 +14,7 @@ fn main() {
     // Dummy declarations for RLS.
     if std::env::var("CARGO").unwrap_or_default().ends_with("rls") {
         llvm::Generator::default()
-            .write_declarations(&format!("{}/llvm_gen.rs", out_dir))
+            .write_declarations(&format!("{out_dir}/llvm_gen.rs"))
             .expect("Unable to write generated LLVM declarations");
 
         return;
@@ -25,7 +25,7 @@ fn main() {
     llvm::Generator::default()
         .parse_llvm_sys_crate()
         .expect("Unable to parse 'llvm-sys' crate")
-        .write_declarations(&format!("{}/llvm_gen.rs", out_dir))
+        .write_declarations(&format!("{out_dir}/llvm_gen.rs"))
         .expect("Unable to write generated LLVM declarations");
 
     // Workaround for `cargo package`

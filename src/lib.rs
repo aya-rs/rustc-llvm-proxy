@@ -62,7 +62,7 @@ lazy_static! {
             Ok(path) => path,
 
             Err(error) => {
-                eprintln!("{}", error);
+                eprintln!("{error}");
                 panic!();
             }
         };
@@ -72,7 +72,7 @@ lazy_static! {
                 Ok(path) => path,
 
                 Err(error) => {
-                    eprintln!("Unable to open LLVM shared lib: {}", error);
+                    eprintln!("Unable to open LLVM shared lib: {error}");
                     panic!();
                 }
             }

@@ -42,7 +42,7 @@ fn get_native_backend() -> String {
 
 unsafe fn init_all(postfix: &str) {
     for backend in POSSIBLE_BACKENDS {
-        let name = format!("LLVMInitialize{}{}", backend, postfix);
+        let name = format!("LLVMInitialize{backend}{postfix}");
         if let Ok(entrypoint) = SHARED_LIB.get::<unsafe extern "C" fn()>(name.as_bytes()) {
             entrypoint();
         }
@@ -72,7 +72,7 @@ pub unsafe extern "C" fn LLVM_InitializeAllAsmPrinters() {
 
 unsafe fn init_native(postfix: &str) -> LLVMBool {
     let backend = get_native_backend();
-    let name = format!("LLVMInitialize{}{}", backend, postfix);
+    let name = format!("LLVMInitialize{backend}{postfix}");
     if let Ok(entrypoint) = SHARED_LIB.get::<unsafe extern "C" fn()>(name.as_bytes()) {
         entrypoint();
         0
