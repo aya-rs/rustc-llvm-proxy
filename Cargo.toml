@@ -16,6 +16,7 @@ lazy_static = "1.0"
 failure = "0.1"
 libc = "0.2"
 llvm-sys = { version = "150", features = ["no-llvm-linking", "disable-alltargets-init"] }
+regex = "1"
 
 [build-dependencies]
 cargo_metadata = "0.8"
