@@ -78,6 +78,7 @@ mod llvm {
         "target.rs",
         "target_machine.rs",
         "transforms/ipo.rs",
+        "transforms/pass_builder.rs",
         "transforms/pass_manager_builder.rs",
         "transforms/scalar.rs",
         "transforms/vectorize.rs",
