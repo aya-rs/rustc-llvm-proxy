@@ -98,6 +98,7 @@ pub mod proxy {
     use llvm_sys::prelude::*;
     use llvm_sys::target::*;
     use llvm_sys::target_machine::*;
+    use llvm_sys::transforms::pass_builder::*;
     use llvm_sys::transforms::pass_manager_builder::*;
     use llvm_sys::*;
 

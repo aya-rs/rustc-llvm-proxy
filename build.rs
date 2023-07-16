@@ -58,14 +58,17 @@ mod llvm {
     use super::*;
 
     const LLVM_SOURCES: &[&str] = &[
-        "core.rs",
-        "linker.rs",
+        "analysis.rs",
         "bit_reader.rs",
         "bit_writer.rs",
-        "ir_reader.rs",
+        "core.rs",
+        "debuginfo.rs",
         "disassembler.rs",
         "error_handling.rs",
+        "execution_engine.rs",
         "initialization.rs",
+        "ir_reader.rs",
+        "linker.rs",
         "lto.rs",
         "object.rs",
         "orc2/ee.rs",
@@ -75,12 +78,10 @@ mod llvm {
         "target.rs",
         "target_machine.rs",
         "transforms/ipo.rs",
+        "transforms/pass_builder.rs",
         "transforms/pass_manager_builder.rs",
         "transforms/scalar.rs",
         "transforms/vectorize.rs",
-        "debuginfo.rs",
-        "analysis.rs",
-        "execution_engine.rs",
     ];
 
     const INIT_MACROS: &[&str] = &[
