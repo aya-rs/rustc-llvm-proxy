@@ -18,7 +18,7 @@ libc = "0.2"
 llvm-sys = { version = "160", features = ["no-llvm-linking", "disable-alltargets-init"] }
 
 [build-dependencies]
-cargo_metadata = "0.8"
+cargo_metadata = "0.15"
 failure = "0.1"
 quote = "0.6"
 syn = { version = "0.15", features = ["full"] }
