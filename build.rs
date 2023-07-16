@@ -187,14 +187,14 @@ mod llvm {
         fn extract_foreign_mod_declarations(&self, item: &ItemForeignMod) -> Vec<Declaration> {
             item.items.iter().fold(vec![], |mut list, item| match item {
                 ForeignItem::Fn(ref item) => {
-                    let ret_ty = match item.decl.output {
-                        ReturnType::Default => "()".into(),
-                        ReturnType::Type(_, ref ty) => ty.into_token_stream().to_string(),
+                    let ret_ty = match item.sig.output {
+                        ReturnType::Default => "()".to_string(),
+                        ReturnType::Type(_, ref ty) => ty.to_token_stream().to_string(),
                     };
 
                     list.push(Declaration {
-                        name: item.ident.to_string(),
-                        args: item.decl.inputs.clone().into_token_stream().to_string(),
+                        name: item.sig.ident.to_string(),
+                        args: item.sig.inputs.to_token_stream().to_string(),
                         ret_ty,
                     });
 
