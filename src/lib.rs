@@ -80,48 +80,9 @@ lazy_static! {
     };
 }
 
-/// Commonly used LLVM CAPI symbols with dynamic resolving
+/// LLVM C-API symbols with dynamic resolving.
 pub mod proxy {
     use super::SHARED_LIB;
-
-    use llvm_sys::analysis::*;
-    use llvm_sys::debuginfo::*;
-    use llvm_sys::disassembler::*;
-    use llvm_sys::error::*;
-    use llvm_sys::error_handling::*;
-    use llvm_sys::execution_engine::*;
-    use llvm_sys::lto::*;
-    use llvm_sys::object::*;
-    use llvm_sys::orc2::ee::*;
-    use llvm_sys::orc2::lljit::*;
-    use llvm_sys::orc2::*;
-    use llvm_sys::prelude::*;
-    use llvm_sys::target::*;
-    use llvm_sys::target_machine::*;
-    use llvm_sys::transforms::pass_builder::*;
-    use llvm_sys::transforms::pass_manager_builder::*;
-    use llvm_sys::*;
-
-    macro_rules! create_proxy {
-        ($name:ident ; $ret_ty:ty ; $($arg:ident : $arg_ty:ty),*) => {
-            #[no_mangle]
-            pub unsafe extern "C" fn $name($($arg: $arg_ty),*) -> $ret_ty {
-                let entrypoint = {
-                    SHARED_LIB
-                        .get::<unsafe extern "C" fn($($arg: $arg_ty),*) -> $ret_ty>(stringify!($name).as_bytes())
-                };
-
-                match entrypoint {
-                    Ok(entrypoint) => entrypoint($($arg),*),
-
-                    Err(_) => {
-                        eprintln!("Unable to find symbol '{}' in the LLVM shared lib", stringify!($name));
-                        panic!();
-                    }
-                }
-            }
-        };
-    }
 
     include!(concat!(env!("OUT_DIR"), "/llvm_gen.rs"));
 }

@@ -5,84 +5,28 @@ extern crate syn;
 #[macro_use]
 extern crate failure;
 
-use std::{env, fs, io::ErrorKind, path::PathBuf};
-
 fn main() {
-    let out_dir = env::var("OUT_DIR").unwrap();
-    let mut manifest_dir: PathBuf = env::var("CARGO_MANIFEST_DIR").unwrap().into();
-
-    // Dummy declarations for RLS.
-    if std::env::var("CARGO").unwrap_or_default().ends_with("rls") {
-        llvm::Generator::default()
-            .write_declarations(&format!("{}/llvm_gen.rs", out_dir))
-            .expect("Unable to write generated LLVM declarations");
-
-        return;
-    }
-
-    println!("cargo:rerun-if-changed=build.rs");
+    let out_dir = std::env::var_os("OUT_DIR").unwrap();
 
     llvm::Generator::default()
         .parse_llvm_sys_crate()
         .expect("Unable to parse 'llvm-sys' crate")
-        .write_declarations(&format!("{}/llvm_gen.rs", out_dir))
+        .write_declarations(&std::path::PathBuf::from(out_dir).join("llvm_gen.rs"))
         .expect("Unable to write generated LLVM declarations");
-
-    // Workaround for `cargo package`
-    // `cargo metadata` creates a new Cargo.lock file, which needs removing
-    manifest_dir.push("Cargo.lock");
-    if let Err(e) = fs::remove_file(&manifest_dir) {
-        if e.kind() != ErrorKind::NotFound {
-            panic!("unexpected error clearing local Cargo.lock: {}", e);
-        }
-    }
-}
-
-#[derive(Debug)]
-struct Declaration {
-    name: String,
-    args: String,
-    ret_ty: String,
 }
 
 mod llvm {
-    use std::fs::File;
-    use std::io::{Read, Write};
-    use std::path::{Path, PathBuf};
-
-    use cargo_metadata::MetadataCommand;
-    use failure::Error;
-    use quote::ToTokens;
-    use syn::{parse_file, Abi, ForeignItem, Item, ItemForeignMod, ReturnType};
-
-    use super::*;
-
-    const LLVM_SOURCES: &[&str] = &[
-        "analysis.rs",
-        "bit_reader.rs",
-        "bit_writer.rs",
-        "core.rs",
-        "debuginfo.rs",
-        "disassembler.rs",
-        "error_handling.rs",
-        "execution_engine.rs",
-        "initialization.rs",
-        "ir_reader.rs",
-        "linker.rs",
-        "lto.rs",
-        "object.rs",
-        "orc2/ee.rs",
-        "orc2/lljit.rs",
-        "orc2/mod.rs",
-        "support.rs",
-        "target.rs",
-        "target_machine.rs",
-        "transforms/ipo.rs",
-        "transforms/pass_builder.rs",
-        "transforms/pass_manager_builder.rs",
-        "transforms/scalar.rs",
-        "transforms/vectorize.rs",
-    ];
+    use cargo_metadata::{MetadataCommand, Package, Target};
+    use failure::{Error, ResultExt as _};
+    use quote::{format_ident, quote};
+    use std::{
+        collections::{
+            hash_map::{Entry, HashMap},
+            HashSet,
+        },
+        fs, io, iter,
+        path::Path,
+    };
 
     const INIT_MACROS: &[&str] = &[
         "LLVM_InitializeAllTargetInfos",
@@ -99,126 +43,316 @@ mod llvm {
 
     #[derive(Default)]
     pub struct Generator {
-        declarations: Vec<Declaration>,
+        functions: HashMap<syn::Ident, (Vec<syn::Ident>, syn::ItemFn)>,
+    }
+
+    fn llvm_sys() -> syn::Ident {
+        format_ident!("llvm_sys")
     }
 
     impl Generator {
-        pub fn parse_llvm_sys_crate(mut self) -> Result<Self, Error> {
-            let llvm_src_path = self.get_llvm_sys_crate_path()?;
+        pub fn parse_llvm_sys_crate(&mut self) -> Result<&mut Self, Error> {
+            let metadata = MetadataCommand::new()
+                .exec()
+                .context("Unable to get crate metadata")?;
 
-            for file in LLVM_SOURCES {
-                let path = llvm_src_path.join(file);
-                let mut declarations = self.extract_file_declarations(&path)?;
+            let llvm_sys_src_path = metadata
+                .packages
+                .into_iter()
+                .find_map(|Package { name, targets, .. }| {
+                    (name == "llvm-sys")
+                        .then(|| {
+                            targets
+                                .into_iter()
+                                .find_map(|Target { name, src_path, .. }| {
+                                    (name == "llvm-sys").then_some(src_path)
+                                })
+                        })
+                        .flatten()
+                })
+                .ok_or_else(|| format_err!("Unable to find 'llvm-sys' in the crate metadata"))?;
 
-                self.declarations.append(&mut declarations);
-            }
+            self.generate_file(llvm_sys_src_path.as_std_path(), &[llvm_sys()])?;
 
             Ok(self)
         }
 
-        pub fn write_declarations(self, path: &str) -> Result<(), Error> {
-            let mut file = File::create(path)?;
-
-            for decl in self.declarations {
-                if INIT_MACROS.contains(&decl.name.as_str()) {
-                    // Skip target initialization wrappers
-                    // (see llvm-sys/wrappers/target.c)
-                    continue;
+        pub fn generate_mod(
+            &mut self,
+            fs_path: &Path,
+            mod_path: &[syn::Ident],
+            m: syn::ItemMod,
+        ) -> Result<(), Error> {
+            let syn::ItemMod { ident, content, .. } = m;
+            let directory = fs_path.join(ident.to_string());
+            let mod_path: Vec<_> = mod_path.iter().chain(iter::once(&ident)).cloned().collect();
+            match content {
+                None => {
+                    // The module is in another file (or directory).
+                    let fs_path = if directory
+                        .try_exists()
+                        .with_context(|_: &io::Error| directory.display().to_string())?
+                    {
+                        directory.join("mod.rs")
+                    } else {
+                        directory.with_extension("rs")
+                    };
+                    self.generate_file(&fs_path, mod_path.as_slice())
+                        .with_context(|_: &Error| fs_path.display().to_string())
+                        .map_err(Into::into)
                 }
-                writeln!(
-                    file,
-                    "create_proxy!({}; {}; {});",
-                    decl.name,
-                    decl.ret_ty,
-                    decl.args
-                        // We cannot use `Err` as an argument name provided to
-                        // the macro, it conflicts with the `Err` tuple variant
-                        // from Rust std preludes. That `Err` comes from the
-                        // `pub type` declaration, where using it allowed.
-                        // https://play.rust-lang.org/?gist=ef464634c9ee2193c08f6d97bdba5dd2
-                        .replace("Err :", "Error :")
-                        .trim_end_matches(',')
-                )?;
+                Some((_, items)) => {
+                    // The module is inline.
+                    for item in items {
+                        match item {
+                            syn::Item::Mod(m) => {
+                                self.generate_mod(&directory, mod_path.as_slice(), m)
+                                    .with_context(|_: &Error| {
+                                        quote! { #(#mod_path)::* }.to_string()
+                                    })?;
+                            }
+                            syn::Item::Type(..) => {}
+                            item => {
+                                panic!("unexpected item {}", quote! { #item });
+                            }
+                        }
+                    }
+                    Ok(())
+                }
             }
+        }
 
+        pub fn generate_file(
+            &mut self,
+            fs_path: &Path,
+            mod_path: &[syn::Ident],
+        ) -> Result<(), Error> {
+            let content = fs::read_to_string(fs_path)
+                .with_context(|_: &io::Error| fs_path.display().to_string())?;
+            let syn::File {
+                shebang: _,
+                attrs: _,
+                items,
+            } = syn::parse_file(&content).context(content)?;
+            for item in items {
+                match item {
+                    syn::Item::Mod(m) => {
+                        let fs_path = fs_path.parent().unwrap();
+                        self.generate_mod(fs_path, mod_path, m)?;
+                    }
+                    syn::Item::ForeignMod(syn::ItemForeignMod {
+                        attrs: _,
+                        unsafety: mod_unsafety,
+                        abi: mod_abi,
+                        items,
+                        brace_token: _,
+                    }) => {
+                        for item in items {
+                            match item {
+                                syn::ForeignItem::Fn(syn::ForeignItemFn {
+                                    attrs: _,
+                                    mut sig,
+                                    vis,
+                                    semi_token: _,
+                                }) => {
+                                    let syn::Signature {
+                                        constness: _,
+                                        asyncness: _,
+                                        unsafety,
+                                        abi,
+                                        fn_token,
+                                        ident,
+                                        generics: _,
+                                        paren_token,
+                                        inputs,
+                                        variadic,
+                                        output,
+                                    } = &mut sig;
+                                    if unsafety.is_none() {
+                                        *unsafety = mod_unsafety;
+                                    }
+                                    if abi.is_none() {
+                                        *abi = Some(mod_abi.clone());
+                                    }
+                                    if INIT_MACROS.iter().any(|macro_name| ident == macro_name) {
+                                        // Skip target initialization wrappers
+                                        // (see llvm-sys/wrappers/target.c)
+                                        continue;
+                                    }
+                                    let mut bare_inputs = syn::punctuated::Punctuated::new();
+                                    let mut input_names = Vec::new();
+                                    for input in inputs.iter_mut() {
+                                        match input {
+                                            syn::FnArg::Receiver(receiver) => {
+                                                panic!(
+                                                    "unexpected receiver {}",
+                                                    quote! { #receiver }
+                                                );
+                                            }
+                                            syn::FnArg::Typed(syn::PatType {
+                                                attrs,
+                                                ref mut pat,
+                                                colon_token: _,
+                                                ty,
+                                            }) => {
+                                                bare_inputs.push(syn::BareFnArg {
+                                                    attrs: attrs.clone(),
+                                                    name: None,
+                                                    ty: (**ty).clone(),
+                                                });
+
+                                                match &mut **pat {
+                                                    syn::Pat::Ident(syn::PatIdent {
+                                                        ref mut ident,
+                                                        ..
+                                                    }) => {
+                                                        // error[E0530]: function parameters cannot shadow tuple variants
+                                                        //      |
+                                                        // 9923 |     pub fn LLVMGetErrorTypeId(Err: LLVMErrorRef) -> LLVMErrorTypeId {
+                                                        //      |                               ^^^ cannot be named the same as a tuple variant
+                                                        if ident == "Err" {
+                                                            *ident = format_ident!("Error");
+                                                        }
+                                                        input_names.push(ident.clone());
+                                                    }
+                                                    pat => {
+                                                        panic!(
+                                                            "unexpected pat {}",
+                                                            quote! { #pat }
+                                                        );
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                    let variadic = variadic.as_ref().map(
+                                        |syn::Variadic {
+                                             attrs,
+                                             pat: _,
+                                             dots,
+                                             comma,
+                                         }| {
+                                            syn::BareVariadic {
+                                                attrs: attrs.clone(),
+                                                name: None,
+                                                dots: *dots,
+                                                comma: *comma,
+                                            }
+                                        },
+                                    );
+
+                                    let type_bare_fn = syn::TypeBareFn {
+                                        lifetimes: Default::default(),
+                                        unsafety: *unsafety,
+                                        abi: abi.clone(),
+                                        fn_token: *fn_token,
+                                        paren_token: *paren_token,
+                                        inputs: bare_inputs,
+                                        variadic,
+                                        output: output.clone(),
+                                    };
+
+                                    let block = quote! {
+                                        {
+                                            let entry = unsafe {
+                                                crate::proxy::SHARED_LIB.get::<#type_bare_fn>(
+                                                    stringify!(#ident).as_bytes(),
+                                                )
+                                            }.expect(stringify!(#ident));
+                                            entry(#(#input_names),*)
+                                        }
+                                    };
+                                    let block = syn::parse2(block).unwrap();
+
+                                    let ident = ident.clone();
+                                    let item_fn = syn::ItemFn {
+                                        attrs: Vec::new(),
+                                        vis,
+                                        sig,
+                                        block,
+                                    };
+                                    let item_fn = syn::parse2(quote! {
+                                        #[no_mangle]
+                                        #item_fn
+                                    })
+                                    .unwrap();
+
+                                    let Self { functions } = self;
+                                    match functions.entry(ident) {
+                                        Entry::Occupied(entry) => {
+                                            if entry.key() == "LLVMAddInstructionCombiningPass" {
+                                                // TODO(https://reviews.llvm.org/D155402): Remove this when the declaration isn't duplicated.
+                                                continue;
+                                            }
+                                            let ident = entry.key();
+                                            let (other_mod_path, _) = entry.get();
+                                            let mod_path = quote! { #(#mod_path::)*#ident };
+                                            let other_mod_path =
+                                                quote! { #(#other_mod_path::)*#ident };
+                                            panic!(
+                                                "duplicate function `{}` `{}`",
+                                                mod_path, other_mod_path
+                                            );
+                                        }
+                                        Entry::Vacant(entry) => {
+                                            entry.insert((mod_path.into(), item_fn));
+                                        }
+                                    }
+                                }
+                                item => {
+                                    panic!("unexpected item {}", quote! { #item });
+                                }
+                            }
+                        }
+                    }
+                    syn::Item::Const(..)
+                    | syn::Item::Enum(..)
+                    | syn::Item::ExternCrate(..)
+                    | syn::Item::Macro(..)
+                    | syn::Item::Struct(..)
+                    | syn::Item::Type(..)
+                    | syn::Item::Use(..) => {}
+                    item => {
+                        panic!("unexpected item {}", quote! { #item });
+                    }
+                }
+            }
             Ok(())
         }
 
-        fn get_llvm_sys_crate_path(&self) -> Result<PathBuf, Error> {
-            let metadata = MetadataCommand::new()
-                .exec()
-                .map_err(|_| format_err!("Unable to get crate metadata"))?;
-
-            let llvm_dependency = metadata
-                .packages
+        pub fn write_declarations(&self, path: &Path) -> io::Result<()> {
+            let Self { functions } = self;
+            let mut items = Vec::new();
+            let mut paths = HashSet::new();
+            let root = [llvm_sys()];
+            let prelude = [llvm_sys(), format_ident!("prelude")];
+            paths.insert(root.as_slice());
+            paths.insert(prelude.as_slice());
+            for (path, item_fn) in functions.values() {
+                let item_fn = syn::parse2(quote! {
+                    #item_fn
+                })
+                .unwrap();
+                items.push(item_fn);
+                paths.insert(path);
+            }
+            let items = paths
                 .into_iter()
-                .find(|item| item.name == "llvm-sys")
-                .ok_or_else(|| format_err!("Unable to find 'llvm-sys' in the crate metadata"))?;
-
-            let llvm_lib_rs_path = llvm_dependency
-                .targets
-                .into_iter()
-                .find(|item| item.name == "llvm-sys")
-                .ok_or_else(|| format_err!("Unable to find lib target for 'llvm-sys' crate"))?
-                .src_path;
-
-            Ok(llvm_lib_rs_path.parent().unwrap().into())
-        }
-
-        fn extract_file_declarations(&self, path: &Path) -> Result<Vec<Declaration>, Error> {
-            let mut file = File::open(path)
-                .map_err(|_| format_err!("Unable to open file: {}", path.to_str().unwrap()))?;
-
-            let mut content = String::new();
-            file.read_to_string(&mut content)?;
-
-            let ast = parse_file(&content).map_err(|e| failure::err_msg(e.to_string()))?;
-
-            Ok(ast.items.iter().fold(vec![], |mut list, item| match item {
-                Item::ForeignMod(ref item) if item.abi.is_c() => {
-                    list.append(&mut self.extract_foreign_mod_declarations(item));
-                    list
-                }
-
-                _ => list,
-            }))
-        }
-
-        fn extract_foreign_mod_declarations(&self, item: &ItemForeignMod) -> Vec<Declaration> {
-            item.items.iter().fold(vec![], |mut list, item| match item {
-                ForeignItem::Fn(ref item) => {
-                    let ret_ty = match item.sig.output {
-                        ReturnType::Default => "()".to_string(),
-                        ReturnType::Type(_, ref ty) => ty.to_token_stream().to_string(),
-                    };
-
-                    list.push(Declaration {
-                        name: item.sig.ident.to_string(),
-                        args: item.sig.inputs.to_token_stream().to_string(),
-                        ret_ty,
-                    });
-
-                    list
-                }
-
-                _ => list,
-            })
-        }
-    }
-
-    trait AbiExt {
-        fn is_c(&self) -> bool;
-    }
-
-    impl AbiExt for Abi {
-        fn is_c(&self) -> bool {
-            let abi_name = self
-                .name
-                .as_ref()
-                .map(|item| item.value())
-                .unwrap_or_default();
-
-            abi_name == "C"
+                .map(|path| {
+                    syn::parse2(quote! {
+                        use #(#path::)**;
+                    })
+                    .unwrap()
+                })
+                .chain(items)
+                .collect();
+            let file = syn::File {
+                shebang: None,
+                attrs: Vec::new(),
+                items,
+            };
+            let formatted = prettyplease::unparse(&file);
+            fs::write(path, formatted)
         }
     }
 }
