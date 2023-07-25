@@ -32,7 +32,7 @@ Then all you need to do is to include the crate into your project:
 
 ``` toml
 [dependencies]
-aya-rustc-llvm-proxy = "0.6"
+aya-rustc-llvm-proxy = "0.7"
 ```
 
 ``` rust
