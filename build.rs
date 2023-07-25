@@ -13,6 +13,16 @@ fn main() {
         .expect("Unable to parse 'llvm-sys' crate")
         .write_declarations(&std::path::PathBuf::from(out_dir).join("llvm_gen.rs"))
         .expect("Unable to write generated LLVM declarations");
+
+    // Workaround for `cargo package`
+    // `cargo metadata` creates a new Cargo.lock file, which needs removing
+    let manifest_dir = std::env::var_os("CARGO_MANIFEST_DIR").unwrap();
+    let cargo_lock = std::path::PathBuf::from(manifest_dir).join("Cargo.lock");
+    if let Err(err) = std::fs::remove_file(&cargo_lock) {
+        if err.kind() != std::io::ErrorKind::NotFound {
+            panic!("failed to delete {}: {err}", cargo_lock.display());
+        }
+    }
 }
 
 mod llvm {
