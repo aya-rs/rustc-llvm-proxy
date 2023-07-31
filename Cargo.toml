@@ -21,7 +21,7 @@ llvm-sys = { version = "160", features = [
 ] }
 
 [build-dependencies]
-cargo_metadata = "0.15.4"
+cargo_metadata = "0.17.0"
 failure = "0.1"
 prettyplease = "0.2.10"
 quote = "1.0.29"
