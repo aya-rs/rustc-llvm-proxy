@@ -39,24 +39,14 @@
 //! extern crate aya_rustc_llvm_proxy;
 //! ```
 
-#[macro_use]
-extern crate lazy_static;
-
-#[macro_use]
-extern crate failure;
-
-extern crate libc;
-extern crate libloading as lib;
-extern crate llvm_sys;
-
-use lib::Library;
+use libloading::Library;
 
 mod path;
 use path::find_lib_path;
 
 pub mod init;
 
-lazy_static! {
+lazy_static::lazy_static! {
     static ref SHARED_LIB: Library = {
         let lib_path = match find_lib_path() {
             Ok(path) => path,

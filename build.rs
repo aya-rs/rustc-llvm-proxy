@@ -2,9 +2,6 @@ extern crate cargo_metadata;
 extern crate quote;
 extern crate syn;
 
-#[macro_use]
-extern crate failure;
-
 fn main() {
     let out_dir = std::env::var_os("OUT_DIR").unwrap();
 
@@ -26,8 +23,8 @@ fn main() {
 }
 
 mod llvm {
+    use anyhow::{format_err, Context as _, Error};
     use cargo_metadata::{MetadataCommand, Package, Target};
-    use failure::{Error, ResultExt as _};
     use quote::{format_ident, quote};
     use std::{
         collections::{
@@ -101,14 +98,14 @@ mod llvm {
                     // The module is in another file (or directory).
                     let fs_path = if directory
                         .try_exists()
-                        .with_context(|_: &io::Error| directory.display().to_string())?
+                        .with_context(|| directory.display().to_string())?
                     {
                         directory.join("mod.rs")
                     } else {
                         directory.with_extension("rs")
                     };
                     self.generate_file(&fs_path, mod_path.as_slice())
-                        .with_context(|_: &Error| fs_path.display().to_string())
+                        .with_context(|| fs_path.display().to_string())
                         .map_err(Into::into)
                 }
                 Some((_, items)) => {
@@ -117,9 +114,7 @@ mod llvm {
                         match item {
                             syn::Item::Mod(m) => {
                                 self.generate_mod(&directory, mod_path.as_slice(), m)
-                                    .with_context(|_: &Error| {
-                                        quote! { #(#mod_path)::* }.to_string()
-                                    })?;
+                                    .with_context(|| quote! { #(#mod_path)::* }.to_string())?;
                             }
                             syn::Item::Type(..) => {}
                             item => {
@@ -137,8 +132,8 @@ mod llvm {
             fs_path: &Path,
             mod_path: &[syn::Ident],
         ) -> Result<(), Error> {
-            let content = fs::read_to_string(fs_path)
-                .with_context(|_: &io::Error| fs_path.display().to_string())?;
+            let content =
+                fs::read_to_string(fs_path).with_context(|| fs_path.display().to_string())?;
             let syn::File {
                 shebang: _,
                 attrs: _,
