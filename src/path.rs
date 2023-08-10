@@ -1,11 +1,10 @@
+use anyhow::{bail, Result};
 use std::env;
 use std::fs::read_dir;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use failure::Error;
-
-pub fn find_lib_path() -> Result<PathBuf, Error> {
+pub fn find_lib_path() -> Result<PathBuf> {
     let directories = collect_possible_directories();
 
     if directories.is_empty() {

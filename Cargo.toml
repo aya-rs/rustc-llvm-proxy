@@ -8,21 +8,21 @@ keywords = ["llvm"]
 categories = ["development-tools::build-utils", "external-ffi-bindings"]
 repository = "https://github.com/aya-rs/rustc-llvm-proxy"
 readme = "README.md"
-edition = "2018"
+edition = "2021"
 
 [dependencies]
-libloading = "0.8.0"
+anyhow = "1.0.72"
 lazy_static = "1.0"
-failure = "0.1"
 libc = "0.2"
+libloading = "0.8.0"
 llvm-sys = { version = "160", features = [
     "no-llvm-linking",
     "disable-alltargets-init",
 ] }
 
 [build-dependencies]
+anyhow = "1.0.72"
 cargo_metadata = "0.17.0"
-failure = "0.1"
 prettyplease = "0.2.10"
 quote = "1.0.29"
 syn = { version = "2.0.26", features = ["full"] }
