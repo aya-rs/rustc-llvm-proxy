@@ -22,7 +22,7 @@ llvm-sys = { version = "170", features = [
 
 [build-dependencies]
 anyhow = "1.0.72"
-cargo_metadata = "0.17.0"
+cargo_metadata = "0.18.0"
 prettyplease = "0.2.10"
 quote = "1.0.29"
 syn = { version = "2.0.26", features = ["full"] }
