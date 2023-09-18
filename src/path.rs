@@ -57,12 +57,13 @@ fn collect_possible_directories() -> Vec<PathBuf> {
 }
 
 fn find_library_in_directory(directory: &Path) -> Option<PathBuf> {
-    match read_dir(directory) {
-        Ok(files) => files
-            .filter_map(Result::ok)
-            .find(|file| file.file_name().to_string_lossy().starts_with("libLLVM"))
-            .map(|file| file.path()),
-
-        Err(_) => None,
-    }
+    let mut files = read_dir(directory).ok()?;
+    files.find_map(|file| {
+        let file = file.ok()?;
+        let path = file.path();
+        let stem = path.file_stem()?;
+        let stem = stem.to_str()?;
+        let extension = path.extension()?;
+        (stem.starts_with("libLLVM") && extension != ".a").then_some(path)
+    })
 }
