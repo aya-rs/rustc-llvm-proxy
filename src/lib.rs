@@ -41,34 +41,49 @@
 
 use libloading::Library;
 
-mod path;
-use path::find_lib_path;
-
 pub mod init;
 
-lazy_static::lazy_static! {
-    static ref SHARED_LIB: Library = {
-        let lib_path = match find_lib_path() {
-            Ok(path) => path,
-
-            Err(error) => {
-                eprintln!("{}", error);
-                panic!();
-            }
+static SHARED_LIB: once_cell::sync::Lazy<Library> = once_cell::sync::Lazy::new(|| {
+    for (var, is_bin) in [
+        ("LD_LIBRARY_PATH", false),
+        ("DYLD_FALLBACK_LIBRARY_PATH", false),
+        ("PATH", true),
+    ] {
+        let Some(unparsed) = std::env::var_os(var) else {
+            continue;
         };
-
-        unsafe {
-            match Library::new(lib_path) {
-                Ok(path) => path,
-
-                Err(error) => {
-                    eprintln!("Unable to open LLVM shared lib: {}", error);
-                    panic!();
+        let paths = std::env::split_paths(&unparsed);
+        for mut path in paths {
+            if is_bin {
+                path.pop();
+                path.push("lib");
+            }
+            let Ok(files) = path.read_dir() else { continue };
+            for file in files {
+                let Some(file) = file.ok() else { continue };
+                let path = file.path();
+                let Some(stem) = path.file_stem() else {
+                    continue;
+                };
+                let Some(stem) = stem.to_str() else { continue };
+                if stem.starts_with("libLLVM") {
+                    match unsafe { Library::new(&path) } {
+                        Ok(library) => return library,
+                        Err(error) => {
+                            eprintln!(
+                                "unable to open LLVM shared lib {}: {}",
+                                path.display(),
+                                error
+                            );
+                            continue;
+                        }
+                    }
                 }
             }
         }
-    };
-}
+    }
+    panic!("unable to find LLVM shared lib")
+});
 
 /// LLVM C-API symbols with dynamic resolving.
 pub mod proxy {
