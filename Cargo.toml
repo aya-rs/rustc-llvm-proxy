@@ -24,4 +24,5 @@ anyhow = "1.0.72"
 cargo_metadata = "0.18.0"
 prettyplease = "0.2.10"
 quote = "1.0.29"
+rustversion = "1.0"
 syn = { version = "2.0.26", features = ["full"] }
