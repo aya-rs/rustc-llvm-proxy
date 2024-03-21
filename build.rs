@@ -59,6 +59,14 @@ mod llvm {
 
     impl Generator {
         pub fn parse_llvm_sys_crate(&mut self) -> Result<&mut Self, Error> {
+            // See https://github.com/rust-lang/cargo/pull/12783.
+
+            #[rustversion::before(1.79)]
+            const LLVM_SYS_CRATE_TARGET: &str = "llvm-sys";
+
+            #[rustversion::since(1.79)]
+            const LLVM_SYS_CRATE_TARGET: &str = "llvm_sys";
+
             let metadata = MetadataCommand::new()
                 .exec()
                 .context("Unable to get crate metadata")?;
@@ -72,7 +80,7 @@ mod llvm {
                             targets
                                 .into_iter()
                                 .find_map(|Target { name, src_path, .. }| {
-                                    (name == "llvm-sys").then_some(src_path)
+                                    (name == LLVM_SYS_CRATE_TARGET).then_some(src_path)
                                 })
                         })
                         .flatten()
