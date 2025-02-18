@@ -43,7 +43,7 @@ use libloading::Library;
 
 pub mod init;
 
-static SHARED_LIB: once_cell::sync::Lazy<Library> = once_cell::sync::Lazy::new(|| {
+static SHARED_LIB: std::sync::LazyLock<Library> = std::sync::LazyLock::new(|| {
     for (var, is_bin) in [
         ("LD_LIBRARY_PATH", false),
         ("DYLD_FALLBACK_LIBRARY_PATH", false),
