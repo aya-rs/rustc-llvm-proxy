@@ -114,7 +114,6 @@ mod llvm {
                     };
                     self.generate_file(&fs_path, mod_path.as_slice())
                         .with_context(|| fs_path.display().to_string())
-                        .map_err(Into::into)
                 }
                 Some((_, items)) => {
                     // The module is inline.
