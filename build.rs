@@ -292,8 +292,7 @@ mod llvm {
                                             let other_mod_path =
                                                 quote! { #(#other_mod_path::)*#ident };
                                             panic!(
-                                                "duplicate function `{}` `{}`",
-                                                mod_path, other_mod_path
+                                                "duplicate function `{mod_path}` `{other_mod_path}`"
                                             );
                                         }
                                         Entry::Vacant(entry) => {
