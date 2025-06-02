@@ -65,7 +65,7 @@ mod llvm {
                 .packages
                 .into_iter()
                 .find_map(|Package { name, targets, .. }| {
-                    (name == "llvm-sys")
+                    (name.as_str() == "llvm-sys")
                         .then(|| {
                             targets
                                 .into_iter()
