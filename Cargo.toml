@@ -20,7 +20,7 @@ llvm-sys = { version = "201.0.0-rc1", features = [
 
 [build-dependencies]
 anyhow = "1.0.72"
-cargo_metadata = "0.20.0"
+cargo_metadata = "0.21.0"
 prettyplease = "0.2.10"
 quote = "1.0.29"
 rustversion = "1.0"
