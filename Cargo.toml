@@ -1,6 +1,6 @@
 [package]
 name = "aya-rustc-llvm-proxy"
-version = "0.9.5"
+version = "0.10.0"
 authors = ["Alessandro Decina <alessandro.d@gmail.com>"]
 description = "Dynamically proxy LLVM calls into Rust own shared library"
 license = "MIT"
